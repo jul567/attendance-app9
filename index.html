@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Attendance System</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f4f9; display: flex; justify-content: center; padding: 20px; }
+        .card { background: #fff; width: 100%; max-width: 400px; padding: 25px; border-radius: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #1a73e8; margin-bottom: 20px; }
+        input, textarea, button { width: 100%; margin: 10px 0; padding: 12px; border-radius: 8px; border: 1px solid #ddd; box-sizing: border-box; }
+        .btn-main { background: #1a73e8; color: #fff; border: none; font-weight: bold; cursor: pointer; }
+        .btn-in { background: #34a853; color: white; border: none; }
+        .btn-out { background: #fbbc05; color: black; border: none; }
+        .info-box { background: #e8f0fe; padding: 15px; border-radius: 8px; font-size: 14px; margin-bottom: 20px; color: #155724; border-left: 5px solid #1a73e8; }
+        video { width: 100%; border-radius: 10px; background: #000; margin-bottom: 10px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <!-- Login Section -->
+    <div id="loginSection">
+        <h2>Student Login</h2>
+        <input type="text" id="rollNo" placeholder="Roll Number">
+        <input type="password" id="password" placeholder="Password">
+        <button class="btn-main" onclick="login()">Login</button>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="appSection" class="hidden">
+        <div id="userDisplay" class="info-box"></div>
+        
+        <video id="video" autoplay playsinline></video>
+        
+        <div id="attendanceControls">
+            <button id="btnIn" class="btn-in" onclick="handleAction('markIn')">Mark IN Attendance</button>
+            <button id="btnOut" class="btn-out" onclick="handleAction('markOut')">Mark OUT Attendance</button>
+        </div>
+
+        <div style="margin-top: 20px; border-top: 1px solid #eee; pt: 15px;">
+            <label style="font-size: 12px; font-weight: bold;">Remarks / Absence Reason</label>
+            <textarea id="remarkField" rows="3" placeholder="Enter reason or notes..."></textarea>
+            <button class="btn-main" onclick="submitRemark()">Submit Response</button>
+        </div>
+        
+        <button onclick="location.reload()" style="background:#ea4335; color:white; border:none; margin-top:20px;">Logout</button>
+    </div>
+</div>
+
+<script>
+    var SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxNbs8h5f__Gzr5Z3LWccRlOFuEOfT0OESrIHJ4SOdQCaAsT2xSi1qMltyQGkLjUAzo/exec";
+    var currentUser = {};
+
+    function login() {
+        const r = document.getElementById("rollNo").value;
+        const p = document.getElementById("password").value;
+        if(!r || !p) return alert("Fill in credentials");
+
+        const script = document.createElement('script');
+        script.src = `${SCRIPT_URL}?action=login&rollNo=${encodeURIComponent(r)}&password=${encodeURIComponent(p)}&callback=authResponse`;
+        document.body.appendChild(script);
+    }
+
+    window.authResponse = function(res) {
+        if(!res.success) return alert(res.message);
+        
+        currentUser = { ...res, rollNo: document.getElementById("rollNo").value, password: document.getElementById("password").value };
+        
+        document.getElementById("loginSection").classList.add("hidden");
+        document.getElementById("appSection").classList.remove("hidden");
+        document.getElementById("userDisplay").innerHTML = `<b>${res.name}</b><br>School: ${res.school}`;
+
+        // Toggle buttons based on status
+        document.getElementById("btnIn").style.display = (res.status === "PENDING_IN") ? "block" : "none";
+        document.getElementById("btnOut").style.display = (res.status === "PENDING_OUT") ? "block" : "none";
+        
+        if(res.status === "COMPLETED") {
+            document.getElementById("attendanceControls").innerHTML = "<p style='color:green; text-align:center'><b>Attendance Fully Marked ✅</b></p>";
+        }
+
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+            .then(s => document.getElementById("video").srcObject = s);
+    };
+
+    async function handleAction(action) {
+        const btn = (action === 'markIn') ? document.getElementById("btnIn") : document.getElementById("btnOut");
+        btn.disabled = true; btn.innerText = "Processing...";
+
+        const canvas = document.createElement('canvas');
+        const video = document.getElementById("video");
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        const photo = canvas.toDataURL('image/jpeg', 0.5);
+
+        navigator.geolocation.getCurrentPosition(async pos => {
+            const gps = `${pos.coords.latitude},${pos.coords.longitude}`;
+            const data = { action, ...currentUser, photo, gps };
+
+            await fetch(SCRIPT_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(data) });
+            alert("Success!");
+            location.reload();
+        }, () => {
+            alert("GPS is required");
+            btn.disabled = false;
+        });
+    }
+
+    async function submitRemark() {
+        const rem = document.getElementById("remarkField").value;
+        if(!rem) return alert("Write a remark first");
+
+        const data = { action: "submitRemarks", ...currentUser, remark: rem };
+        await fetch(SCRIPT_URL, { method: "POST", mode: "no-cors", body: JSON.stringify(data) });
+        alert("Remark Registered!");
+        document.getElementById("remarkField").value = "";
+    }
+</script>
+
+</body>
+</html>
